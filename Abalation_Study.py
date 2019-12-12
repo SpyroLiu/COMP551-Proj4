@@ -1,10 +1,4 @@
-from sklearn import datasets
-from sklearn import linear_model
-from sklearn.model_selection import KFold
-import time
-import math
 import csv
-
 import numpy as np
 import Booster
 
