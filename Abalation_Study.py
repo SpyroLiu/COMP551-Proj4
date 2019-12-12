@@ -35,9 +35,8 @@ def Test_Print(test_data,folds=3,alpha=100):
     num_of_alphas = alpha
     selected_clf = ["lasso", "ridge", "elastic"]
     reproduce_dataset = test_data
-
-    for solver in selected_clf:
-        for ds in reproduce_dataset:
+    for ds in reproduce_dataset:
+        for solver in selected_clf:
             data = ds[:, :-1]
             labels = ds[:, -1].reshape(ds.shape[0], 1)
             weights = np.ones(ds.shape[0])
