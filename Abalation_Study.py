@@ -35,11 +35,13 @@ def Test_Print(test_data,folds=3,alpha=100):
     num_of_alphas = alpha
     selected_clf = ["lasso", "ridge", "elastic"]
     reproduce_dataset = test_data
+
     for ds in reproduce_dataset:
         for solver in selected_clf:
             data = ds[:, :-1]
             labels = ds[:, -1].reshape(ds.shape[0], 1)
             weights = np.ones(ds.shape[0])
+
             clf = Booster.get_new_clf(solver, folds=folds, alphas=num_of_alphas)
             time_coreset, clf_coreset = Booster.coreset_train_model(data, labels, weights, clf, folds=folds, solver=solver)
             score_coreset = Booster.test_model(data, labels, weights, clf)
@@ -56,7 +58,7 @@ def Test_Print(test_data,folds=3,alpha=100):
                     np.sum(np.abs(clf_real.coef_ - clf_coreset.coef_)),
                     time_coreset,
                     time_real))
-            ############################################
+            print('\n')
 
 
 
