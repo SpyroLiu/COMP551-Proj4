@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import Booster as bst
 
-from sklearn.base import TransformerMixin
+from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.linear_model import LinearRegression, Lasso, Ridge, ElasticNet
 from sklearn.model_selection import GridSearchCV
 
@@ -17,6 +17,23 @@ def get_new_clf(solver):
         return Ridge(fit_intercept=False)
     if solver == "elastic":
         return ElasticNet(fit_intercept=False)
+
+class CoresetLMS(BaseEstimator, RegressorMixin):
+    """
+    """
+
+    def __init__(self, solver="linear", k=None, c_size=None, dtype='float64'):
+        self.clf = get_new_clf(solver)
+        self.k = k
+        self.c_size
+
+    def fit(self, X, y=None, weights=None):
+        if not weights:
+            weights = np.ones((X.shape[0],))
+        C, u, b = bst.linregcoreset(X,weights,y,c_size,dtype)
+        self.clf.fit()
+        return self
+
 
 def test(data,labels,weights,solver,folds,alphas):
     clf = bst.get_new_clf(solver, folds=folds, alphas=alphas)
@@ -62,7 +79,7 @@ def test_real(datasets,folds=3,alphas=100):
     count = 0
 
     for i, ds in enumerate(datasets):
-        print(f'Test result of dataset{i}\n')
+        print(f'Test result of dataset{i+1}\n')
         for solver in selected_solver:
             X = ds[:, :-1]
             y = ds[:, -1].reshape(ds.shape[0], 1)
@@ -104,4 +121,4 @@ def test_synthetic(data_size = 10000, feature_size =[3,5,7], folds=3,alphas=100,
 
 if __name__ == '__main__':
     datasets = load_datasets();
-    test_real(datasets, alphas=100)
+    test_real(datasets, alphas=10)
