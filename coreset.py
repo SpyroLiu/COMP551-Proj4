@@ -5,7 +5,7 @@ import numpy as np
 import scipy.linalg as linalg
 
 
-def caratheodory(P, u=None, tol=1e-8, dtype=np.float32):
+def caratheodory(P, u=None, tol=1e-8, dtype=np.float64):
     (n, d) = P.shape
 
     if u is None:
@@ -19,7 +19,7 @@ def caratheodory(P, u=None, tol=1e-8, dtype=np.float32):
     n = np.sum(mask)
 
     while n > d+1:
-        v = linalg.svd((P[mask][:-1] - P[mask][-1]).T, full_matrices=True)[2][-1]
+        v = np.linalg.svd((P[mask][:-1] - P[mask][-1]).T, full_matrices=True)[2][-1]
         v = np.append(v, -np.sum(v))
 
         positive = v > 0
@@ -32,7 +32,7 @@ def caratheodory(P, u=None, tol=1e-8, dtype=np.float32):
     return u
 
 
-def fast_caratheodory(P, u=None, k = None, size=None, tol=1e-8, dtype=np.float32):
+def fast_caratheodory(P, u=None, k = None, size=None, tol=1e-8, dtype=np.float64):
     n, d = P.shape
     n_ = n # save original size
 
@@ -92,11 +92,14 @@ def fast_caratheodory(P, u=None, k = None, size=None, tol=1e-8, dtype=np.float32
     return u_new
 
 
-def coreset(X, y=None, weights=None, k=None, size=None, tol=1e-8, dtype=np.float32):
+def coreset(X, y=None, weights=None, k=None, size=None, tol=1e-8, dtype=np.float64):
     n, d = X.shape
-    P = X[:,:,np.newaxis]
+    P = X[:,:,np.newaxis].astype(dtype)
     P = np.einsum('ikj,ijk->ijk', P, P)
-    P = P.reshape(n,d**2)
+    P = P.reshape(n,(d)**2)
+    #P = np.append(X, y[:,np.newaxis], axis=1)[:,:,np.newaxis].astype(dtype)
+    #P = np.einsum('ikj,ijk->ijk', P, P)
+    #P = P.reshape(n,(d+1)**2)
 
     w = np.sqrt(fast_caratheodory(P, weights, k, size, tol, dtype))
     idx_mask = w != 0
@@ -111,22 +114,28 @@ def coreset(X, y=None, weights=None, k=None, size=None, tol=1e-8, dtype=np.float
 if __name__ == '__main__':
     from ablation import load_datasets
     from Booster import Caratheodory, Fast_Caratheodory
-    d = load_datasets()[0][:100]
-    u = np.arange(100)
+    d = load_datasets()[2].astype(np.float64)
+    n, _ = d.shape
+    u = np.random.rand(n)
+    u_ = u.copy()
 
     # test caratheodory
-    c = caratheodory(d, u)
-    assert(np.all(u == np.arange(100)))
-    assert(np.allclose(d.T @ c, d.T @ u))
+    c = caratheodory(d[:100], u[:100])
+    assert(np.all(u == u_))
+    assert(np.allclose(d[:100].T @ c, d[:100].T @ u[:100]))
 
     # test fast_caratheodory
     c = fast_caratheodory(d,u)
-    assert(np.all(u == np.arange(100)))
+    assert(np.all(u == u_))
     assert(np.allclose(d.T @ c, d.T @ u))
 
     A = d[:,:-1]
     y = d[:,-1]
     C, y, w = coreset(A, y)
     S = w * C
-    print((A.T @ A, S.T @ S))
     assert(np.allclose(A.T @ A, S.T @ S))
+
+    from timeit import timeit
+
+    print(timeit(lambda: Fast_Caratheodory(d, u, None), number=10))
+    print(timeit(lambda: fast_caratheodory(d, u), number=10))

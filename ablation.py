@@ -2,59 +2,49 @@ import csv
 import time
 import numpy as np
 import pandas as pd
-import Booster as bst
+
+from coreset import coreset
+from Booster import linregcoreset
 
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.linear_model import LinearRegression, Lasso, Ridge, ElasticNet
 from sklearn.model_selection import GridSearchCV
 
-def get_new_clf(solver):
+def get_new_clf(solver, *args, **kwargs):
     if solver == "linear":
-        return LinearRegression(fit_intercept=False)
+        kwargs.pop('alpha')
+        return LinearRegression(*args, **kwargs)
     elif solver == "lasso":
-        return Lasso(fit_intercept=False)
+        return Lasso(*args, **kwargs)
     elif solver == "ridge":
-        return Ridge(fit_intercept=False)
+        return Ridge(*args, **kwargs)
     if solver == "elastic":
-        return ElasticNet(fit_intercept=False)
+        return ElasticNet(*args, **kwargs)
 
 class CoresetLMS(BaseEstimator, RegressorMixin):
     """
     """
 
-    def __init__(self, solver="linear", k=None, c_size=None, dtype='float64'):
-        self.clf = get_new_clf(solver)
+    def __init__(self, solver="linear", alpha=1, k=None, size=None, tol=1e-8, dtype=np.float64):
+        self.solver = solver
+        self.alpha = alpha
         self.k = k
-        self.c_size
+        self.size = size
+        self.tol = tol
+        self.dtype = dtype
 
-    def fit(self, X, y=None, weights=None):
-        if not weights:
-            weights = np.ones((X.shape[0],))
-        C, u, b = bst.linregcoreset(X,weights,y,c_size,dtype)
-        self.clf.fit()
+    def fit(self, X, y):
+        self.clf_ = get_new_clf(self.solver, alpha=self.alpha)
+        C, b, w = coreset(X, y, None, self.k, self.size, self.tol, self.dtype)
+        #S = w * C
+        #assert np.allclose(X.T @ X, S.T @ S)
+        self.clf_.fit(w * C, b)
         return self
 
-
-def test(data,labels,weights,solver,folds,alphas):
-    clf = bst.get_new_clf(solver, folds=folds, alphas=alphas)
-    time_coreset, clf_coreset = bst.coreset_train_model(data, labels, weights, clf, folds=folds, solver=solver)
-    score_coreset = bst.test_model(data, labels, weights, clf)
-
-    clf = bst.get_new_clf(solver, folds=folds, alphas=alphas)
-    time_real, clf_real = bst.train_model(data, labels, weights,clf)
-    score_real = bst.test_model(data, labels, weights, clf)
-
-    print(
-        f'solver: {solver}\n'
-        f'alphas: {alphas},\n'
-        f'original_time = {time_real}\n'
-        f'coreset_time = {time_coreset}\n'
-        f'score_diff = {np.abs(score_coreset - score_real)}\n'
-        f'coef_diff = {np.sum(np.abs(clf_real.coef_ - clf_coreset.coef_))}\n'
-        )
+    def predict(self, X):
+        return self.clf_.predict(X)
 
 def load_datasets():
-
     ds1 = pd.read_csv(
         "3D_spatial_network.csv",
         header=None,
@@ -69,56 +59,23 @@ def load_datasets():
     ds3 = pd.read_csv(
         "kc_house_data.csv",
         index_col=0
-    ).iloc[:, [2, 4, 5, 6, 7, 11, 12, 13, 1]].to_numpy().astype(np.int)
+    ).iloc[:, [2, 4, 5, 6, 7, 11, 12, 13, 1]].to_numpy().astype(np.float32)
 
     return (ds1,ds2,ds3)
 
-def test_real(datasets,folds=3,alphas=100):
 
-    selected_solver = ["lasso", "ridge", "elastic"]
-    count = 0
+def main():
+    ds1, ds2, ds3 = load_datasets();
+    from sklearn.model_selection import validation_curve
 
-    for i, ds in enumerate(datasets):
-        print(f'Test result of dataset{i+1}\n')
-        for solver in selected_solver:
-            X = ds[:, :-1]
-            y = ds[:, -1].reshape(ds.shape[0], 1)
-            w = np.ones(ds.shape[0])
+    clf = CoresetLMS('lasso')
+    lnr = Lasso()
 
-            test(X,y,w,solver,folds,alphas)
-
-def test_synthetic(data_size = 10000, feature_size =[3,5,7], folds=3,alphas=100,range=100,solver='lasso'):
-    n = data_size
-    d = feature_size
-    weights = np.ones(n)
-    labels = np.floor(np.random.rand(n, 1) * range)
-
-    for i in feature_size:
-        print(f'\nTest result of d={i}')
-        data = np.floor(np.random.rand(n, i) * range)
-        test(data,labels,weights,solver,folds,alphas)
+    #clf.fit(ds1[:,:-1], ds1[:,-1])
+    print(validation_curve(clf, ds2[:,:-1], ds2[:,-1], 'alpha', np.logspace(-7, 3, 10))[0])
+    print(validation_curve(lnr, ds2[:,:-1], ds2[:,-1], 'alpha', np.logspace(-7, 3, 10))[0])
 
 
-        # #########RIDGE REGRESSION#############
-        # clf = Booster.get_new_clf(solver, folds=folds, alphas=num_of_alphas)
-        # time_coreset, clf_coreset = Booster.coreset_train_model(data, labels, weights, clf, folds=folds, solver=solver)
-        # score_coreset = Booster.test_model(data, labels, weights, clf)
-        #
-        # clf = Booster.get_new_clf(solver, folds=folds, alphas=num_of_alphas)
-        # time_real, clf_real = Booster.train_model(data, labels, weights, clf)
-        # score_real = Booster.test_model(data, labels, weights, clf)
-        #
-        # print(
-        #     " solver: {}\n number_of_alphas: {}, \nscore_diff = {}\n---->coef diff = {}\n---->coreset_time = {}\n---->data time = {}".format(
-        #         solver,
-        #         num_of_alphas,
-        #         np.abs(score_coreset - score_real),
-        #         np.sum(np.abs(clf_real.coef_ - clf_coreset.coef_)),
-        #         time_coreset,
-        #         time_real))
-
-# def test_synthetic_size(num_of_data=10000, num_of_feature=3,sol='lasso',folds=3,alphas=100,range=100):
 
 if __name__ == '__main__':
-    datasets = load_datasets();
-    test_real(datasets, alphas=10)
+    main()
