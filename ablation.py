@@ -66,14 +66,24 @@ def load_datasets():
 
 def main():
     ds1, ds2, ds3 = load_datasets();
-    from sklearn.model_selection import validation_curve
+    from sklearn.model_selection import cross_validate
 
-    clf = CoresetLMS('lasso')
-    lnr = Lasso()
+    clf = CoresetLMS()
+    lnr = LinearRegression()
+
+
+    n = 100000000
+    d = 3
+    data_range = 100
+    num_of_alphas = 300
+    folds = 3
+    data = np.floor(np.random.rand(n, d) * data_range)
+    labels = np.floor(np.random.rand(n, 1) * data_range)
+    weights = np.ones(n)
 
     #clf.fit(ds1[:,:-1], ds1[:,-1])
-    print(validation_curve(clf, ds2[:,:-1], ds2[:,-1], 'alpha', np.logspace(-7, 3, 10))[0])
-    print(validation_curve(lnr, ds2[:,:-1], ds2[:,-1], 'alpha', np.logspace(-7, 3, 10))[0])
+    print(cross_validate(clf, data, labels))
+    print(cross_validate(lnr, data, labels))
 
 
 

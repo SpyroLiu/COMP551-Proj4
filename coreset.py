@@ -5,7 +5,7 @@ import numpy as np
 import scipy.linalg as linalg
 
 
-def caratheodory(P, u=None, tol=1e-8, dtype=np.float64):
+def caratheodory(P, u=None, size=None, tol=1e-8, dtype=np.float64):
     (n, d) = P.shape
 
     if u is None:
@@ -18,7 +18,7 @@ def caratheodory(P, u=None, tol=1e-8, dtype=np.float64):
     mask = u != 0
     n = np.sum(mask)
 
-    while n > d+1:
+    while n > (size or d+1):
         v = np.linalg.svd((P[mask][:-1] - P[mask][-1]).T, full_matrices=True)[2][-1]
         v = np.append(v, -np.sum(v))
 
@@ -51,15 +51,15 @@ def fast_caratheodory(P, u=None, k = None, size=None, tol=1e-8, dtype=np.float64
     # default fastest value for k
     if not k:
         k = 2 *d + 2
+    elif k <= d + 1:
+        return u
     k_ = k
 
     # scaling, see original implementation
     u_sum = np.sum(u)
     u /= u_sum
 
-    if not size:
-        size = d + 1
-    while n > size:
+    while n > (size or d+1):
         # discretize cluster count and size
         cluster_size = int(np.ceil(n/k_))
         k = int(np.ceil(n/cluster_size))
@@ -77,7 +77,7 @@ def fast_caratheodory(P, u=None, k = None, size=None, tol=1e-8, dtype=np.float64
         # weighted means of the clusters
         means = np.einsum('ijk,ij->ik', clusters, cluster_weights)
         # call to caratheodory using weighted cluster means
-        w = caratheodory(means, np.ones(k, dtype), tol, dtype)
+        w = caratheodory(means, np.ones(k, dtype), None, tol, dtype)
 
         cluster_mask = w != 0
         P = clusters[cluster_mask].reshape(-1,d)
@@ -113,29 +113,47 @@ def coreset(X, y=None, weights=None, k=None, size=None, tol=1e-8, dtype=np.float
 
 if __name__ == '__main__':
     from ablation import load_datasets
-    from Booster import Caratheodory, Fast_Caratheodory
-    d = load_datasets()[2].astype(np.float64)
-    n, _ = d.shape
-    u = np.random.rand(n)
-    u_ = u.copy()
+    from Booster import Caratheodory, Fast_Caratheodory, linregcoreset
 
-    # test caratheodory
-    c = caratheodory(d[:100], u[:100])
-    assert(np.all(u == u_))
-    assert(np.allclose(d[:100].T @ c, d[:100].T @ u[:100]))
+    import time
 
-    # test fast_caratheodory
-    c = fast_caratheodory(d,u)
-    assert(np.all(u == u_))
-    assert(np.allclose(d.T @ c, d.T @ u))
+    def timeit(f, *args, **kwargs):
+        t0 = time.perf_counter()
+        ret = f(*args, **kwargs)
+        return ret, time.perf_counter() - t0
 
-    A = d[:,:-1]
-    y = d[:,-1]
-    C, y, w = coreset(A, y)
-    S = w * C
-    assert(np.allclose(A.T @ A, S.T @ S))
 
-    from timeit import timeit
 
-    print(timeit(lambda: Fast_Caratheodory(d, u, None), number=10))
-    print(timeit(lambda: fast_caratheodory(d, u), number=10))
+    import pandas as pd
+
+    df0 = pd.DataFrame(columns=('n','d','k','ratio','time'))
+    df1 = pd.DataFrame(columns=('n','d','k','ratio','time'))
+
+    data_range = 100
+    for n in range(250000, 2500000, 250000):
+        u = np.ones(n)
+        for d in (3, 5, 7):
+            A = np.floor(np.random.rand(n, d) * data_range)
+            for k in (2*(d**2)+2, 4*(d**2)+4, 8*(d**2)+8):
+                for _ in range(3):
+
+                    #timeit(lambda: linregcoreset(data, u, None), number=10))
+                    (C, w), t = timeit(lambda: coreset(A, weights=u, k=k))
+                    S = w * C
+                    assert(np.allclose(A.T @ A, S.T @ S))
+
+                    row = {
+                        'n': n,
+                        'd': d,
+                        'k': k,
+                        'ratio': C.size / A.size,
+                        'time': t
+                    }
+                    print(row)
+                    df0.loc[len(df0)] = row
+
+                    (C, w), t = timeit(lambda: linregcoreset(A, u, None))
+                    df1.loc[len(df1)] = (n, d, k, C.size / A.size, t)
+
+    df0.to_csv('nani_coreset_performance.csv')
+    df1.to_csv('ibrahim_coreset_performance.csv')
